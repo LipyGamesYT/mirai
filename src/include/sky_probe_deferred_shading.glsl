@@ -76,9 +76,6 @@ void main() {
     vec3 projPos = vec3(v_projPos, depth);
     vec3 worldPos = projToWorld(projPos);
     vec3 worldDir = normalize(worldPos);
-#if !BGFX_SHADER_LANGUAGE_GLSL
-    worldDir.y *= -1.0;
-#endif
     if (worldDir.y < 0.1 && ClampViewVectors.x > 0.0) worldDir = normalize(vec3(worldDir.x, 0.1, worldDir.z));
 
     vec3 outColor = GetAtmosphere(worldDir, 1e10, SunDir.xyz, vec3_splat(1.0)) * SUN_MAX_ILLUMINANCE;

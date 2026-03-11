@@ -66,7 +66,7 @@ void main() {
     vec2 waterPos = v_worldPos.xz - WorldOrigin.xz;
     vec3 waterNormal = getWaterNormal(waterPos, Time.x);
     waterNormal = mul(tbn, waterNormal);
-    waterNormal = mix(normal, waterNormal, saturate(exp(-length(v_worldPos.xz) * 0.07)));
+    waterNormal = mix(normal, waterNormal, saturate(exp(-length(v_worldPos.xz) * 0.05)));
 
     gl_FragData[0] = uvec4(0u, pack2x8(v_lightmapUV), 0u, 0u);
     gl_FragData[1] = vec4_splat(0.0);

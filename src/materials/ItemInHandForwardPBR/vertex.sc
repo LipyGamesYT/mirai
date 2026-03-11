@@ -12,10 +12,15 @@ $input i_data2
 $input i_data3
 #endif
 
+$output v_bitangent
+$output v_clipPosition
 $output v_color0
 $output v_mers
 $output v_normal
+$output v_pbrTextureId
 $output v_prevWorldPos
+$output v_tangent
+$output v_texcoord0
 $output v_worldPos
 
 #include "bgfx_shader.sh"

@@ -86,7 +86,7 @@ void main() {
     gl_FragData[0] = vec4_splat(0.0);
 
     //somthing happen here
-    float waterBodyMask = 1.0 - texture2D(s_CausticsMultiplier, v_texcoord0).r;
+    float waterBodyMask = texture2D(s_CausticsMultiplier, v_texcoord0).r;
     gl_FragData[1] = vec4(waterBodyMask, 0.0, 0.0, 1.0);
 
     float depth = sampleDepth(s_SceneDepth, v_texcoord0);
@@ -105,6 +105,7 @@ void main() {
     vec3 normal = octToNdirSnorm(texture2D(s_Normal, v_texcoord0).rg);
 
     vec3 shadowMap = calcShadowMap(worldPos, normal).rgr;
+    if (shadowMap.r > 0.9) subsurface = 0.0;
 
 #ifdef VOLUMETRIC_CLOUDS_ENABLED
     CloudSetup cloudSetup = calcCloudSetup(DirectionalLightSourceWorldSpaceDirection.y, position.y);
@@ -113,7 +114,7 @@ void main() {
     shadowMap.b = min(shadowMap.b, cloudShadow); //used for specular
 #endif
 
-    if (waterBodyMask > 0.0) {
+    if (waterBodyMask < 1.0) {
         float caustic = calcCaustic(position, DirectionalLightSourceWorldSpaceDirection.xyz, Time.x);
         shadowMap = shadowMap * (0.5 + caustic * 1.5);
     }
@@ -220,7 +221,7 @@ void main() {
 #endif
 
         //underwater tint (extinction)
-        if (CameraIsUnderwater.r > 0.0 && texture2D(s_SpecularLighting, v_texcoord0).r > 0.0) {
+        if (CameraIsUnderwater.r > 0.0 && texture2D(s_SpecularLighting, v_texcoord0).r < 1.0) {
             outColor *= exp(-WATER_EXTINCTION_COEFFICIENTS * worldDist);
         }
 

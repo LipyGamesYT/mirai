@@ -13,7 +13,10 @@ $input i_data3
 #endif
 
 $output v_bitangent
+$output v_clipPosition
 $output v_color0
+$output v_frontFacing
+$output v_mers
 $output v_normal
 $output v_pbrTextureId
 $output v_prevWorldPos

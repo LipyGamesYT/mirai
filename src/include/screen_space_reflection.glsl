@@ -59,25 +59,22 @@ vec2 getPreviousUV(vec3 ndc) {
     vec4 prevClipPos = mul(u_prevViewProj, vec4(worldPos, 1.0));
     vec3 prevNdc = prevClipPos.xyz / prevClipPos.w;
     vec2 prevUV = prevNdc.xy * 0.5 + 0.5;
-#if !BGFX_SHADER_LANGUAGE_GLSL
-    prevUV.y = 1.0 - prevUV.y;
-#endif
     return prevUV;
 }
 
 bool isDepthInCameraBounds(float depth) {
     if (CameraData.x < CameraData.y) {
-        return CameraData.x < depth && depth < CameraData.y; //reverse z case
+        return CameraData.x < depth && depth < CameraData.y;
     } else {
         return CameraData.x > depth && depth > CameraData.y;
     }
 }
 
-float projToLinearDepth(float z){
+float projToLinearDepth(float z) {
 #if BGFX_SHADER_LANGUAGE_GLSL
     return CameraData.x * (z + 1.0) / (CameraData.y + CameraData.x - z * (CameraData.y - CameraData.x));
 #else
-    return z / (CameraData.y - z * (CameraData.y - CameraData.x));
+    return -z / (CameraData.y - z * (CameraData.y - CameraData.x));
 #endif
 }
 
@@ -167,7 +164,7 @@ void main() {
     vec3 viewNormal = mul(u_view, vec4(normal, 0.0)).xyz;
 
     vec3 reflectedView = reflect(normalize(viewPos), viewNormal);
-    vec3 rayStartView = viewPos + normal * SSRRayMarchingParams.z;
+    vec3 rayStartView = viewPos + viewNormal * SSRRayMarchingParams.z;
     vec3 rayEndView = rayStartView + reflectedView;
 
     if (!isDepthInCameraBounds(rayStartView.z) || !isDepthInCameraBounds(rayEndView.z)) {

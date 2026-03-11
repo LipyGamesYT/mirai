@@ -3,12 +3,6 @@
 
 // taken from old vanilla deferred material, and it still works
 
-CONST(float) kHeightMapPixelEdgeWidth = 0.08333333333333333;
-CONST(float) kHeightMapDepth = 4.0;
-CONST(float) kRecipHeightMapDepth = 0.25;
-CONST(float) kNudgePixelCentreDistEpsilon = 0.0625;
-CONST(float) kNudgeUvEpsilon = 3.814697265625e-06;
-
 CONST(int) kInvalidPBRTextureHandle = 0xFFFF;
 CONST(int) kPBRTextureDataFlagHasMaterialTexture = 1;
 CONST(int) kPBRTextureDataFlagHasSubsurfaceChannel = 2;
@@ -32,8 +26,11 @@ vec3 octToNdirSnorm(vec2 p) {
 }
 
 float packMetalnessSubsurface(float metalness, float subsurface) {
-    if (metalness > subsurface) return 0.5019607843137255 + 0.4980392156862745 * metalness;
-    return 0.4980392156862745 - 0.4980392156862745 * subsurface;
+    if (metalness > subsurface) {
+        return 0.5019607843137255 + 0.4980392156862745 * metalness;
+    } else {
+        return 0.4980392156862745 - 0.4980392156862745 * subsurface;
+    }
 }
 
 float unpackMetalness(float metalnessSubsurface) {
@@ -48,19 +45,24 @@ vec3 calculateTangentNormalFromHeightmap(highp sampler2D heightmapTexture, vec2 
     vec3 tangentNormal = vec3(0.0, 0.0, 1.0);
     float fadeForLowerMips = linearstep(2.0, 1.0, mipLevel);
 
+    CONST(float) kHeightMapPixelEdgeWidth = 0.08333333333333333;
+    CONST(float) kHeightMapDepth = 4.0;
+    CONST(float) kRecipHeightMapDepth = 0.25;
+
     if (fadeForLowerMips > 0.0) {
         vec2 widthHeight = vec2(textureSize(heightmapTexture, 0));
         vec2 pixelCoord = heightmapUV * widthHeight;
-        vec2 nudgeSampleCoord = fract(pixelCoord);
-
-        if (abs(nudgeSampleCoord.x - 0.5) < kNudgePixelCentreDistEpsilon) {
-            heightmapUV.x += (nudgeSampleCoord.x > 0.5) ? kNudgeUvEpsilon : -kNudgeUvEpsilon;
+        {
+            CONST(float) kNudgePixelCentreDistEpsilon = 0.0625;
+            CONST(float) kNudgeUvEpsilon = 3.814697265625e-06;
+            vec2 nudgeSampleCoord = fract(pixelCoord);
+            if (abs(nudgeSampleCoord.x - 0.5) < kNudgePixelCentreDistEpsilon) {
+                heightmapUV.x += (nudgeSampleCoord.x > 0.5) ? kNudgeUvEpsilon : -kNudgeUvEpsilon;
+            }
+            if (abs(nudgeSampleCoord.y - 0.5) < kNudgePixelCentreDistEpsilon) {
+                heightmapUV.y += (nudgeSampleCoord.y > 0.5) ? kNudgeUvEpsilon : -kNudgeUvEpsilon;
+            }
         }
-
-        if (abs(nudgeSampleCoord.y - 0.5) < kNudgePixelCentreDistEpsilon) {
-            heightmapUV.y += (nudgeSampleCoord.y > 0.5) ? kNudgeUvEpsilon : -kNudgeUvEpsilon;
-        }
-
         vec4 heightSamples = textureGather(heightmapTexture, heightmapUV, 0);
         vec2 subPixelCoord = fract(pixelCoord + 0.5);
 

@@ -88,15 +88,15 @@ void main() {
     vec3 nColor = normalize(v_color0.rgb);
     float nColorAvg = colorAvg(nColor);
 
-    //get vanilla ambient occlusion by using color average
+    //get ambient occlusion by using color average
     float vanillaAO = colorAvg(v_color0.rgb);
 
-    //block that need vertex color tint
+    //blocks that need vertex color tint
     if (any(notEqual(nColor.ggb, nColor.brr))) {
         albedo.rgb *= nColor;
-        vanillaAO /= nColorAvg; //normalize luminance
+        vanillaAO /= nColorAvg;
     }
-    albedo.rgb *= nColorAvg;
+    albedo.rgb *= nColorAvg; //normalize albedo brightness
 #endif
 
     gl_FragData[0] = uvec4(pack2x8(mers.bg), pack2x8(v_lightmapUV), pack2x8(vec2(vanillaAO, 0.0)), 0u);
