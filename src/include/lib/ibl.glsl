@@ -35,7 +35,7 @@ uniform highp vec4 SSRParameters;
 SAMPLER2D_HIGHP_AUTOREG(s_SSRTexture);
 
 vec3 indirectSpecular(vec3 f0, vec3 worldDir, vec3 normal, vec2 ssrUV, float roughness, float metalness, vec2 lightmap, float exposure, bool isNeedSkyReflection) {
-    vec3 blockAmbient = BLOCK_LIGHT_COLOR * uv1x2lig(lightmap.r) * BLOCK_LIGHT_INTENSITY;
+    vec3 blockAmbient = BLOCK_LIGHT_COLOR * calcLightFalloff(lightmap.r) * BLOCK_LIGHT_INTENSITY;
     vec3 ambientColor = mix(vec3_splat(MIN_AMBIENT_LIGHT), blockAmbient, luminance(blockAmbient)) * metalness;
     vec3 incomingLight = ambientColor;
 
@@ -67,7 +67,7 @@ vec3 indirectSpecular(vec3 f0, vec3 worldDir, vec3 normal, vec2 ssrUV, float rou
 #else
 
 vec3 indirectSpecular(vec3 f0, vec3 worldDir, vec3 normal, float roughness, float metalness, vec2 lightmap, bool isNeedSkyReflection) {
-    vec3 blockAmbient = BLOCK_LIGHT_COLOR * uv1x2lig(lightmap.r) * BLOCK_LIGHT_INTENSITY;
+    vec3 blockAmbient = BLOCK_LIGHT_COLOR * calcLightFalloff(lightmap.r) * BLOCK_LIGHT_INTENSITY;
     vec3 ambientColor = mix(vec3_splat(MIN_AMBIENT_LIGHT), blockAmbient, luminance(blockAmbient)) * metalness;
     vec3 incomingLight = ambientColor;
 
