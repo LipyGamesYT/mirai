@@ -14,7 +14,7 @@ void applyCumulusClouds(inout vec3 outColor, vec3 scatterColor, vec3 absorbColor
 
     //get atmosphere again, but now with cloud depth and has more aerial intensity
     vec4 transmittance;
-    vec3 atmContrib = GetAtmosphere(worldDir, clouds.b, 50.0, SunDir.xyz, vec3_splat(1.0), transmittance) * SUN_MAX_ILLUMINANCE;
+    vec3 atmContrib = GetAtmosphere(worldDir, clouds.b, 100.0, SunDir.xyz, vec3_splat(1.0), transmittance) * SUN_MAX_ILLUMINANCE;
     atmContrib += GetAtmosphere(worldDir, clouds.b, 50.0, MoonDir.xyz, vec3_splat(1.0)) * MOON_MAX_ILLUMINANCE;
 
     vec3 cloudsColor = (clouds.g * scatterColor + clouds.r * absorbColor) * transmittance.rgb;
