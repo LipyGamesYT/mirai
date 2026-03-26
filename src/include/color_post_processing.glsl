@@ -27,67 +27,51 @@ SAMPLER2D_HIGHP_AUTOREG(s_RasterizedColor);
 
 #include "./lib/common.glsl"
 
-// https://github.com/dmnsgn/glsl-tone-map/blob/main/agx.glsl
-vec3 agx(vec3 color) {
-    mat3 LINEAR_SRGB_TO_LINEAR_REC2020 = mtxFromCols(
-        vec3(0.6274, 0.0691, 0.0164),
-        vec3(0.3293, 0.9195, 0.0880),
-        vec3(0.0433, 0.0113, 0.8956)
-    );
-    color = mul(LINEAR_SRGB_TO_LINEAR_REC2020, color);
+//https://github.com/bWFuanVzYWth/AgX/
+vec3 agx_curve3(vec3 v) {
+    CONST(float) threshold = 0.6060606060606061;
+    CONST(float) a_up = 69.86278913545539;
+    CONST(float) a_down = 59.507875;
+    CONST(float) b_up = 13.0 / 4.0;
+    CONST(float) b_down = 3.0 / 1.0;
+    CONST(float) c_up = -4.0 / 13.0;
+    CONST(float) c_down = -1.0 / 3.0;
 
+    vec3 mask = step(v, vec3_splat(threshold));
+    vec3 a = a_up + (a_down - a_up) * mask;
+    vec3 b = b_up + (b_down - b_up) * mask;
+    vec3 c = c_up + (c_down - c_up) * mask;
+    return 0.5 + (((-2.0 * threshold)) + 2.0 * v) * pow(1.0 + a * pow(abs(v - threshold), b), c);
+}
+
+vec3 agx_tonemapping(vec3 ci) {
+    CONST(float) min_ev = -12.473931188332413;
+    CONST(float) max_ev = 4.026068811667588;
+    CONST(float) dynamic_range = max_ev - min_ev;
+
+    mat3 agx_mat = mtxFromCols(
+        vec3(0.8424010709504686, 0.04240107095046854, 0.04240107095046854),
+        vec3(0.07843650156180276, 0.8784365015618028, 0.07843650156180276),
+        vec3(0.0791624274877287, 0.0791624274877287, 0.8791624274877287)
+    );
+
+    mat3 agx_mat_inv = mtxFromCols(
+        vec3(1.1969986613119143, -0.053001338688085674, -0.053001338688085674),
+        vec3(-0.09804562695225345, 1.1519543730477466, -0.09804562695225345),
+        vec3(-0.09895303435966087, -0.09895303435966087, 1.151046965640339)
+    );
 
     // Input transform (inset)
-    // Converted to column major from blender: https://github.com/blender/blender/blob/fc08f7491e7eba994d86b610e5ec757f9c62ac81/release/datafiles/colormanagement/config.ocio#L358
-    mat3 AgXInsetMatrix = mtxFromCols(
-        vec3(0.856627153315983, 0.137318972929847, 0.11189821299995),
-        vec3(0.0951212405381588, 0.761241990602591, 0.0767994186031903),
-        vec3(0.0482516061458583, 0.101439036467562, 0.811302368396859)
-    );
-    color = mul(AgXInsetMatrix, color);
+    ci = mul(agx_mat, ci);
 
-    color = max(color, 1e-10); // From Filament: avoid 0 or negative numbers for log2
-
-    // Log2 space encoding
-    CONST(float) AgxMinEv = -12.47393;
-    CONST(float) AgxMaxEv = 4.026069;
-    color = clamp(log2(color), AgxMinEv, AgxMaxEv);
-    color = (color - AgxMinEv) / (AgxMaxEv - AgxMinEv);
-
-    color = saturate(color); // From Filament
-
-    // Apply sigmoid function approximation
-    // Mean error^2: 3.6705141e-06
-    vec3 x2 = color * color;
-    vec3 x4 = x2 * x2;
-    color = + 15.5   * x4 * x2
-            - 40.14  * x4 * color
-            + 31.96  * x4
-            - 6.868  * x2 * color
-            + 0.4298 * x2
-            + 0.1191 * color
-            - 0.00232;
+    // Apply sigmoid function
+    vec3 ct = saturate(log2(ci) * (1.0 / dynamic_range) - (min_ev / dynamic_range));
+    vec3 co = agx_curve3(ct);
 
     // Inverse input transform (outset)
-    // Converted to column major and inverted from https://github.com/EaryChow/AgX_LUT_Gen/blob/ab7415eca3cbeb14fd55deb1de6d7b2d699a1bb9/AgXBaseRec2020.py#L25
-    // https://github.com/google/filament/blob/bac8e58ee7009db4d348875d274daf4dd78a3bd1/filament/src/ToneMapper.cpp#L273-L278
-    mat3 AgXOutsetMatrix = mtxFromCols(
-        vec3(1.1271005818144368, -0.1413297634984383, -0.14132976349843826),
-        vec3(-0.11060664309660323, 1.157823702216272, -0.11060664309660294),
-        vec3(-0.016493938717834573, -0.016493938717834257, 1.2519364065950405)
-    );
-    color = mul(AgXOutsetMatrix, color);
+    co = mul(agx_mat_inv, co);
 
-
-    mat3 LINEAR_REC2020_TO_LINEAR_SRGB = mtxFromCols(
-        vec3(1.6605, -0.1246, -0.0182),
-        vec3(-0.5876, 1.1329, -0.1006),
-        vec3(-0.0728, -0.0083, 1.1187)
-    );
-    color = mul(LINEAR_REC2020_TO_LINEAR_SRGB, color);
-
-    color = saturate(color);
-    return color;
+    return co;
 }
 
 void main() {
@@ -120,11 +104,13 @@ void main() {
 
 
     float exposure = (MIDDLE_GRAY / refLuminance) * exposureValue;
-    vec3 outColor = agx(inputColor * exposure);
+    vec3 outColor = agx_tonemapping(inputColor * exposure);
 
     vec4 rasterColor = texture2D(s_RasterizedColor, v_texcoord0);
-    rasterColor.rgb = agx(rasterColor.rgb);
+    rasterColor.rgb = agx_tonemapping(rasterColor.rgb);
     outColor = mix(outColor, rasterColor.rgb, rasterColor.a);
+
+    outColor = saturate(outColor);
 
     gl_FragColor = vec4(outColor, 1.0);
 }
