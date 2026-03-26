@@ -22,27 +22,6 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-/////////////////////////////////////////////////////////////////////////
-
-// Fast semi-physical atmosphere with planet view and aerial perspective.
-//
-// I have long dreamed of (and tried making) a function that
-// generates plausible atmospheric scattering and transmittance without
-// expensive ray marching that also supports aerial perspectives and
-// offers simple controls over perceived atmospheric density which do not
-// affect the color of the output.
-//
-// This file represents my latest efforts in making such a function and
-// this time I am happy enough with the result to release it.
-//
-// Big thanks to:
-// Inigo Quilez (https://iquilezles.org) for this site and his great
-// library of shader resources.
-// Sébastien Hillaire (https://sebh.github.io) for his many papers on
-// atmospheric and volumetric rendering.
-
-/////////////////////////////////////////////////////////////////////////
-
 // Config
 #define AERIAL_SCALE 1.0 // Higher value = more aerial perspective. A value of 1 is tuned to match reference implementation.
 
@@ -69,7 +48,6 @@
 #define M_DENSITY_CAM_MOD     10.0
 #define M_OZONE               1.5
 #define M_OZONE2              5.0
-#define M_MIE                 5.0
 
 float sq(float x) { return x*x; }
 float pow4(float x) { return sq(x)*sq(x); }
@@ -90,7 +68,7 @@ vec2 SphereIntersection(vec3 rayStart, vec3 rayDir, vec3 sphereCenter, float sph
 }
 
 vec3 GetLightTransmittance(vec3 lightDir, float multiplier, float ozoneMultiplier) {
-    float lightExtinctionAmount = exp(-(saturate(lightDir.y + 0.025) * 40.0)) + exp(-(saturate(lightDir.y + 0.25) * 5.0)) * 0.4 + sq(saturate(1.0-lightDir.y)) * 0.02 + 0.002;
+    float lightExtinctionAmount = exp(-(saturate(lightDir.y + 0.04) * 40.0)) + exp(-(saturate(lightDir.y + 0.4) * 5.0)) * 0.4 + sq(saturate(1.0-lightDir.y)) * 0.02 + 0.002;
     return exp(-(C_RAYLEIGH + C_MIE + C_OZONE * ozoneMultiplier) * lightExtinctionAmount * ATMOSPHERE_DENSITY * multiplier * M_LIGHT_TRANSMITTANCE);
 }
 
@@ -102,24 +80,24 @@ vec3 GetMoonTransmittance(vec3 moonDir) {
     return saturation(GetLightTransmittance(moonDir, 1.0, 1.0), 0.25);
 }
 
-// Main atmosphere function
-vec3 GetAtmosphere(
-    vec3 rayStart,
-    vec3 rayDir,
-    float rayLength,
-    float aerial,
-    vec3 lightDir,
-    vec3 lightColor,
-    out vec4 transmittance,
-    float occlusion
-) {
-    // Planet and atmosphere intersection to get optical depth
-    // TODO: Could simplify to circle intersection test if flat horizon is acceptable
-    vec2 t1 = SphereIntersection(rayStart, rayDir, PLANET_CENTER, PLANET_RADIUS);
-    vec2 t2 = SphereIntersection(rayStart, rayDir, PLANET_CENTER, PLANET_RADIUS + ATMOSPHERE_HEIGHT);
+struct AtmosphereParams {
+    vec3 rayStart;
+    vec3 rayDir;
+    vec3 lightDir;
+    float rayLength;
+    float aerial;
+    float occlusion;
+    float mieMod;
+};
 
-    float altitude = rayStart.y;
-    float normAltitude = rayStart.y / ATMOSPHERE_HEIGHT;
+// Main atmosphere function
+vec3 GetAtmosphere(AtmosphereParams params, out vec4 transmittance) {
+    // Planet and atmosphere intersection to get optical depth
+    vec2 t1 = SphereIntersection(params.rayStart, params.rayDir, PLANET_CENTER, PLANET_RADIUS);
+    vec2 t2 = SphereIntersection(params.rayStart, params.rayDir, PLANET_CENTER, PLANET_RADIUS + ATMOSPHERE_HEIGHT);
+
+    float altitude = params.rayStart.y;
+    float normAltitude = params.rayStart.y / ATMOSPHERE_HEIGHT;
 
     if (t2.y < 0.0) {
         // Outside of atmosphere looking into space, return nothing
@@ -128,11 +106,11 @@ vec3 GetAtmosphere(
     } else {
         // In case camera is outside of atmosphere, subtract distance to entry.
         t2.y -= max(0.0, t2.x);
-        float opticalDepth = t2.y;
 
+        float opticalDepth = t2.y;
         // Optical depth modulators
-        opticalDepth = min(rayLength, opticalDepth);
-        opticalDepth = min(opticalDepth * aerial * M_AERIAL * AERIAL_SCALE, t2.y);
+        opticalDepth = min(params.rayLength, opticalDepth);
+        opticalDepth = min(opticalDepth * params.aerial * M_AERIAL * AERIAL_SCALE, t2.y);
 
         // Altitude-based density modulators
         float hbias = 1.0 - 1.0 / (2.0 + sq(t2.y) * M_DENSITY_HEIGHT_MOD);
@@ -142,34 +120,33 @@ vec3 GetAtmosphere(
         float densityM = sq(sqhbias) * hbias * ATMOSPHERE_DENSITY;
 
         // Apply light transmittance (makes sky red as sun approaches horizon)
-        float ly = lightDir.y;
-        ly += saturate(-lightDir.y + 0.02) * saturate(lightDir.y + 0.7);
+        float ly = params.lightDir.y;
+        ly += saturate(-params.lightDir.y + 0.02) * saturate(params.lightDir.y + 0.7);
         ly = clamp(ly, -1.0, 1.0);
-        lightColor *= GetLightTransmittance(vec3(lightDir.x, ly, lightDir.z), hbias, M_OZONE2);
+        vec3 lightColor = GetLightTransmittance(vec3(params.lightDir.x, ly, params.lightDir.z), hbias, M_OZONE2);
 
         // Approximate marched Rayleigh + Mie scattering with some exp magic.
         vec3 R = (1.0 - exp(-opticalDepth * densityR * C_RAYLEIGH / RAYLEIGH_MAX_LUM)) * RAYLEIGH_MAX_LUM;
         vec3 M = (1.0 - exp(-opticalDepth * densityM * C_MIE / MIE_MAX_LUM)) * MIE_MAX_LUM;
         vec3 E = (C_RAYLEIGH * densityR + C_MIE * densityM + C_OZONE * densityR * M_OZONE) * pow4(1.0 - normAltitude) * M_TRANSMITTANCE;
 
-        float costh = dot(rayDir, lightDir);
+        float costh = dot(params.rayDir, params.lightDir);
         float phaseR = PhaseR(costh);
         float phaseM = PhaseHG(costh, 0.8);
 
         // Combined scattering
-        float desaturate = smoothstep(0.0, 0.25, lightDir.y) * 0.75 + 0.25;
-        vec3 rayleigh = (phaseR * occlusion + phaseR * M_FAKE_MS) * saturation(lightColor, desaturate);
-        vec3 mie = (phaseM * occlusion + phaseR * M_FAKE_MS) * lightColor * M_MIE;
+        vec3 rayleigh = (phaseR * params.occlusion + phaseR * M_FAKE_MS) * saturation(lightColor, 0.5);
+        vec3 mie = (phaseM * params.occlusion + phaseR * M_FAKE_MS) * lightColor * params.mieMod;
         vec3 scattering = mie * M + rayleigh * R;
 
         // View extinction, matched to reference
         transmittance.rgb = exp(-(opticalDepth + pow8(opticalDepth * 4.5e-6)) * E);
-        transmittance.rgb = saturation(transmittance.rgb, desaturate);
+        transmittance.rgb = saturation(transmittance.rgb, 0.5);
         // Store planet intersection flag in transmittance.w, useful for occluding clouds, celestial bodies etc.
         transmittance.a = step(t1.x, 0.0);
 
         // Darken planet
-        if (t1.y > 0.0 && t1.y < rayLength) {
+        if (t1.y > 0.0 && t1.y < params.rayLength) {
             float planetOpticalDepth = t1.y - max(0.0, t1.x);
             float skyWeight = exp(-planetOpticalDepth * 1e-6);
             scattering *= mix(vec3(0.2, 0.3, 0.4), vec3(1.0, 1.0, 1.0), skyWeight);
@@ -179,19 +156,9 @@ vec3 GetAtmosphere(
     }
 }
 
-// Overloaded functions
-vec3 GetAtmosphere(vec3 rayDir, float rayLength, float aerial, vec3 lightDir, vec3 lightColor, out vec4 transmittance) {
-    return GetAtmosphere(vec3(0.0, 10.0, 0.0), rayDir, rayLength, aerial, lightDir, lightColor, transmittance, 1.0);
-}
-
-vec3 GetAtmosphere(vec3 rayDir, float rayLength, float aerial, vec3 lightDir, vec3 lightColor) {
+vec3 GetAtmosphere(AtmosphereParams params) {
     vec4 transmittance;
-    return GetAtmosphere(vec3(0.0, 10.0, 0.0), rayDir, rayLength, aerial, lightDir, lightColor, transmittance, 1.0);
-}
-
-vec3 GetAtmosphere(vec3 rayDir, float rayLength, vec3 lightDir, vec3 lightColor) {
-    vec4 transmittance;
-    return GetAtmosphere(vec3(0.0, 10.0, 0.0), rayDir, rayLength, 1.0, lightDir, lightColor, transmittance, 1.0);
+    return GetAtmosphere(params, transmittance);
 }
 
 #endif

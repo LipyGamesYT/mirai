@@ -16,7 +16,12 @@ void main() {
     v_texcoord0 = a_texcoord0;
 
 #if GEOMETRY_PREPASS_ALPHA_TEST_PASS
-    v_ambientLight = a_texcoord1;
+    //unpack block light color and lightmap
+    uvec2 data16 = uvec2(a_texcoord1 * 65535.0) & 0xFFFFu;
+    uint lowByte = data16.g & 0xFFu;
+    v_coloredLighting = vec3(data16.r >> 8, data16.r & 0xFFu, data16.g >> 8) / 255.0;
+    v_vanillaLighting = vec2(uvec2(lowByte >> 4, lowByte) & 15u) / 15.0;
+
     v_worldPos = worldPos;
     v_normal = a_normal.xyz;
     v_tangent = mul(u_model[0], vec4(a_tangent.xyz, 0.0)).xyz;
@@ -73,7 +78,16 @@ void main() {
 
     albedo.rgb *= 0.5; //decrease albedo brightness to match terrain
 
-    gl_FragData[0] = uvec4(pack2x8(mers.bg), pack2x8(v_ambientLight), pack2x8(vec2(1.0, 0.0)), 0u);
+    vec3 lightColor = v_coloredLighting;
+    if ((lightColor.r + lightColor.g + lightColor.b) <= 0.0 && v_vanillaLighting.x > 0.0) {
+        float blm = v_vanillaLighting.x * v_vanillaLighting.x;
+        lightColor = saturate(vec3(blm, blm * ((blm * 0.6 + 0.4) * 0.6 + 0.4), blm * ((blm * blm * 0.6) + 0.4)));
+    }
+    lightColor /= 6.0;
+    float maxVal = ceil(saturate(max(max(lightColor.r, lightColor.g), lightColor.b)) * 255.0) / 255.0;
+    lightColor /= maxVal;
+
+    gl_FragData[0] = uvec4(pack2x8(mers.bg), pack2x8(lightColor.rg), pack2x8(vec2(lightColor.b, maxVal)), pack2x8(vec2(1.0, v_vanillaLighting.y)));
     gl_FragData[1] = vec4(albedo.rgb, packMetalnessSubsurface(mers.r, mers.a));
     gl_FragData[2].xy = ndirToOctSnorm(normal);
     gl_FragData[2].zw = calculateMotionVector(v_worldPos, v_worldPos - u_prevWorldPosOffset.xyz);

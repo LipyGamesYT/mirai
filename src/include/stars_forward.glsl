@@ -56,9 +56,7 @@ void main() {
     outColor.rgb = preExposeLighting(outColor.rgb, texture2D(s_PreviousFrameAverageLuminance, vec2_splat(0.5)).r);
     gl_FragColor = outColor;
 #else
-    float fadeRange = (SkyProbeUVFadeParameters.x - SkyProbeUVFadeParameters.y) + EPSILON;
-    outColor.rgb *= (clamp(projPos.y * 0.5 + 0.5, SkyProbeUVFadeParameters.y, SkyProbeUVFadeParameters.x) - SkyProbeUVFadeParameters.y) / fadeRange;
-    gl_FragColor = outColor;
+    gl_FragColor = vec4_splat(0.0);
 #endif
 }
 #endif

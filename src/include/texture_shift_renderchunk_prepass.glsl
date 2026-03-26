@@ -1,7 +1,7 @@
 #include "./lib/taau_util.glsl"
 #include "./lib/common.glsl"
 
-//currently dont know what things rendered by this material
+//currently dont know what things are rendered by this material
 
 
 ///////////////////////////////////////////////////////////
@@ -19,7 +19,12 @@ void main() {
     v_textureShift = a_texcoord2;
 
 #if !DEPTH_ONLY_PASS
-    uvec2 data16 = uvec2(round(a_texcoord1 * 65535.0));
+    uvec2 data16 = uvec2(a_texcoord1 * 65535.0);
+    uvec2 highByte = (data16 >> 8) & 0xFFu;
+    uvec2 lowByte = data16 & 0xFFu;
+    uvec2 mHighByte = highByte & 0xFFu;
+    float lintensity = a_normal.w * 0.5 + 0.5;
+    v_lightColor = vec3(mHighByte.x, lowByte.x, mHighByte.y) / 255.0 * lintensity * 6.0;
     v_lightmapUV = vec2(uvec2(data16.y >> 4, data16.y) & 15u) / 15.0;
     v_normal = mul(u_model[0], vec4(a_normal.xyz, 0.0)).xyz;
     v_tangent = mul(u_model[0], vec4(a_tangent.xyz, 0.0)).xyz;
@@ -97,7 +102,16 @@ void main() {
     vec4 mers = vec4(0.0, 0.0, 1.0, 0.0);
     getTexturePBRMaterials(s_MatTexture, pbrTextureId, adjustedUV, v_tangent, v_bitangent, normal, mers);
 
-    gl_FragData[0] = uvec4(pack2x8(mers.bg), pack2x8(v_lightmapUV), pack2x8(vec2(1.0, 0.0)), 0u);
+    vec3 lightColor = v_lightColor;
+    if ((lightColor.r + lightColor.g + lightColor.b) <= 0.0 && v_lightmapUV.x > 0.0) {
+        float blm = v_lightmapUV.x * v_lightmapUV.x;
+        lightColor = saturate(vec3(blm, blm * ((blm * 0.6 + 0.4) * 0.6 + 0.4), blm * ((blm * blm * 0.6) + 0.4)));
+    }
+    lightColor /= 6.0;
+    float maxVal = ceil(saturate(max(max(lightColor.r, lightColor.g), lightColor.b)) * 255.0) / 255.0;
+    lightColor /= maxVal;
+
+    gl_FragData[0] = uvec4(pack2x8(mers.bg), pack2x8(lightColor.rg), pack2x8(vec2(lightColor.b, maxVal)), pack2x8(vec2(1.0, v_lightmapUV.y)));
     gl_FragData[1] = vec4(albedo.rgb, packMetalnessSubsurface(mers.r, mers.a));
     gl_FragData[2].xy = ndirToOctSnorm(normal);
     gl_FragData[2].zw = calculateMotionVector(v_worldPos, v_worldPos - u_prevWorldPosOffset.xyz);

@@ -1,8 +1,7 @@
 #ifndef IBL_INCLUDE
 #define IBL_INCLUDE
 
-// this is basically vanilla vibrant visual indirect specular
-// with some changes to make it look oke with mirai needs
+// some functions are deobfuscated from vanilla materials
 
 uniform highp vec4 ConvolutionType;
 uniform highp vec4 IBLParameters;
@@ -34,8 +33,7 @@ vec3 getProbeLighting(float a, vec3 rv) {
 uniform highp vec4 SSRParameters;
 SAMPLER2D_HIGHP_AUTOREG(s_SSRTexture);
 
-vec3 indirectSpecular(vec3 f0, vec3 worldDir, vec3 normal, vec2 ssrUV, float roughness, float metalness, vec2 lightmap, float exposure, bool isNeedSkyReflection) {
-    vec3 blockAmbient = BLOCK_LIGHT_COLOR * calcLightFalloff(lightmap.r) * BLOCK_LIGHT_INTENSITY;
+vec3 indirectSpecular(vec3 f0, vec3 worldDir, vec3 normal, vec3 blockAmbient, vec2 ssrUV, float roughness, float metalness, float skyLightmap, float exposure, bool isNeedSkyReflection) {
     vec3 ambientColor = mix(vec3_splat(MIN_AMBIENT_LIGHT), blockAmbient, luminance(blockAmbient)) * metalness;
     vec3 incomingLight = ambientColor;
 
@@ -45,7 +43,7 @@ vec3 indirectSpecular(vec3 f0, vec3 worldDir, vec3 normal, vec2 ssrUV, float rou
         vec3 skyProbe = getProbeLighting(roughness, reflectedDir);
 
         if (isNeedSkyReflection) {
-            incomingLight = mix(incomingLight, skyProbe * pow(lightmap.g, 3.0) * reflIntensity, reflIntensity);
+            incomingLight = mix(incomingLight, skyProbe * pow(skyLightmap, 3.0) * reflIntensity, reflIntensity);
         }
 
         float iblLuminance = luminance(incomingLight);
@@ -66,8 +64,7 @@ vec3 indirectSpecular(vec3 f0, vec3 worldDir, vec3 normal, vec2 ssrUV, float rou
 
 #else
 
-vec3 indirectSpecular(vec3 f0, vec3 worldDir, vec3 normal, float roughness, float metalness, vec2 lightmap, bool isNeedSkyReflection) {
-    vec3 blockAmbient = BLOCK_LIGHT_COLOR * calcLightFalloff(lightmap.r) * BLOCK_LIGHT_INTENSITY;
+vec3 indirectSpecular(vec3 f0, vec3 worldDir, vec3 normal, vec3 blockAmbient, float roughness, float metalness, float skyLightmap, bool isNeedSkyReflection) {
     vec3 ambientColor = mix(vec3_splat(MIN_AMBIENT_LIGHT), blockAmbient, luminance(blockAmbient)) * metalness;
     vec3 incomingLight = ambientColor;
 
@@ -77,7 +74,7 @@ vec3 indirectSpecular(vec3 f0, vec3 worldDir, vec3 normal, float roughness, floa
         vec3 skyProbe = getProbeLighting(roughness, reflectedDir);
 
         if (isNeedSkyReflection) {
-            incomingLight = mix(incomingLight, skyProbe * pow(lightmap.g, 3.0) * reflIntensity, reflIntensity);
+            incomingLight = mix(incomingLight, skyProbe * pow(skyLightmap, 3.0) * reflIntensity, reflIntensity);
         }
 
         float iblLuminance = luminance(incomingLight);

@@ -1,4 +1,4 @@
-// this is default vibrant visual's SSR with some modifications
+// deobfuscated from vanilla material with some modifications
 
 ///////////////////////////////////////////////////////////
 // VERTEX SHADER
@@ -66,7 +66,7 @@ bool isDepthInCameraBounds(float depth) {
     if (CameraData.x < CameraData.y) {
         return CameraData.x < depth && depth < CameraData.y;
     } else {
-        return CameraData.x > depth && depth > CameraData.y;
+        return CameraData.x > depth && depth > CameraData.y; //reverse z case
     }
 }
 
@@ -127,9 +127,10 @@ float doBinarySearch(int foundIter, vec3 rayStartSS, vec3 rayStepSS, highp sampl
     float iterBeforeHit = float(foundIter - 1);
     float iterAfterHit = float(foundIter);
     float refinedIter = iterAfterHit;
+    int bStepCount = int(SSRRayMarchingParams.w);
 
     LOOP
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < bStepCount; i++) {
         float iterMid = (iterBeforeHit + iterAfterHit) * 0.5;
         vec3 posMid = rayStartSS + (rayStepSS * iterMid);
         float rayLinearDepth = projToLinearDepth(posMid.z);
@@ -174,12 +175,12 @@ void main() {
 
     vec3 rayStartSS = viewToProj(rayStartView);
     vec3 rayEndSS = viewToProj(rayEndView);
-    vec3 normRaySS = normalize(rayEndSS - rayStartSS) / SSRRayMarchingParams.x;
-    vec3 rayStepSS = SSRRayMarchingParams.y * normRaySS;
+    vec3 raySpanSS = rayEndSS - rayStartSS;
+    vec3 rayStepSS = normalize(raySpanSS) / SSRRayMarchingParams.x;
 
     int stepsCount = calcStepsCount(rayStartSS, rayStepSS);
 
-    vec2 foundCoord = v_texcoord0;
+    vec2 foundCoord = stexcoord;
     int foundIter = doLinearSearch(rayStartSS, rayStepSS, stepsCount, s_GbufferDepth, foundCoord);
     if (foundIter < 1) {
         gl_FragColor = vec4_splat(0.0);

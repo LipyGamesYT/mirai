@@ -23,10 +23,28 @@ void main() {
     float sunFade = smoothstep(0.0, 0.1, SunDir.y);
     float moonFade = smoothstep(0.0, 0.1, MoonDir.y);
 
-    v_absorbColor = GetSunTransmittance(SunDir.xyz) * sunFade * PI * M_EXPOSURE_MUL * SUN_MAX_ILLUMINANCE;
-    v_absorbColor += GetMoonTransmittance(MoonDir.xyz) * moonFade * PI * M_EXPOSURE_MUL * MOON_MAX_ILLUMINANCE;
-    v_scatterColor = GetAtmosphere(vec3(0.0, 1.0, 0.0), 1e10, SunDir.xyz, vec3_splat(1.0)) * SUN_MAX_ILLUMINANCE;
-    v_scatterColor += GetAtmosphere(vec3(0.0, 1.0, 0.0), 1e10, MoonDir.xyz, vec3_splat(1.0)) * MOON_MAX_ILLUMINANCE;
+    v_absorbColor = GetSunTransmittance(SunDir.xyz) * sunFade * SUN_MAX_ILLUMINANCE;
+    v_absorbColor += GetMoonTransmittance(MoonDir.xyz) * moonFade * MOON_MAX_ILLUMINANCE;
+
+    AtmosphereParams sunAtmParams;
+    sunAtmParams.rayStart = vec3(0.0, 10.0, 0.0);
+    sunAtmParams.rayDir = vec3(0.0, 1.0, 0.0);
+    sunAtmParams.lightDir = SunDir.xyz;
+    sunAtmParams.rayLength = 1e10;
+    sunAtmParams.aerial = 1.0;
+    sunAtmParams.occlusion = 1.0;
+    sunAtmParams.mieMod = 1.0;
+    v_scatterColor = GetAtmosphere(sunAtmParams) * SUN_MAX_ILLUMINANCE;
+
+    AtmosphereParams moonAtmParams;
+    moonAtmParams.rayStart = vec3(0.0, 10.0, 0.0);
+    moonAtmParams.rayDir = vec3(0.0, 1.0, 0.0);
+    moonAtmParams.lightDir = MoonDir.xyz;
+    moonAtmParams.rayLength = 1e10;
+    moonAtmParams.aerial = 1.0;
+    moonAtmParams.occlusion = 1.0;
+    moonAtmParams.mieMod = 1.0;
+    v_scatterColor += GetAtmosphere(moonAtmParams) * MOON_MAX_ILLUMINANCE;
 
     if (int(DimensionID.r) != 0) {
         v_absorbColor = vec3_splat(0.0);
@@ -62,6 +80,7 @@ uniform highp vec4 RenderChunkFogAlpha;
 uniform highp vec4 CameraIsUnderwater;
 uniform highp vec4 WorldOrigin;
 uniform highp vec4 Time;
+uniform highp vec4 CameraLightIntensity;
 
 SAMPLER2D_HIGHP_AUTOREG(s_Normal);
 USAMPLER2D_AUTOREG(s_EmissiveAmbientLinearRoughness);
@@ -84,9 +103,7 @@ void main() {
     vec3 worldPos = projToWorld(projPos);
     vec3 worldDir = normalize(worldPos);
     vec3 position = worldPos - WorldOrigin.xyz;
-
-    float wDistNorm = length(worldPos) / FogAndDistanceControl.z;
-    float dither = texelFetch(s_CausticsTexture, ivec3(ivec2(gl_FragCoord.xy) % 256, 1), 0).r;
+    float worldDist = length(worldPos);
 
     vec3 normal = octToNdirSnorm(texture2D(s_Normal, v_texcoord0).rg);
     float shadowMap = calcShadowMap(worldPos, normal).r;
@@ -97,19 +114,25 @@ void main() {
     shadowMap = min(shadowMap, cloudShadow);
 #endif
 
-    vec3 brdf = BRDFSpecular(normal, DirectionalLightSourceWorldSpaceDirection.xyz, -worldDir, vec3_splat(0.04), shadowMap, 0.0);
+    vec3 brdf = BRDFSpecular(normal, DirectionalLightSourceWorldSpaceDirection.xyz, -worldDir, vec3_splat(0.5), shadowMap, 0.0);
     vec3 outColor = v_absorbColor * brdf;
 
     gl_FragColor.a = 0.2;
 
     if (int(DimensionID.r) == 0) {
         if (CameraIsUnderwater.r > 0.0) {
-            outColor = vec3_splat(0.0);
-            gl_FragColor.a = smoothstep(1.0, 0.0, dot(normal, refract(worldDir, -normal, 1.333)));
+            outColor = exp(-WATER_EXTINCTION_COEFFICIENTS * 10.0) * luminance(v_absorbColor) * 0.01 * CameraLightIntensity.y;
+            gl_FragColor.a = smoothstep(1.0, 0.0, dot(normal, refract(worldDir, -normal, 1.333)) * exp(-length(worldPos) * 0.15));
         }
-        applyCumulusClouds(outColor, v_scatterColor, v_absorbColor, worldDir, wDistNorm, dither, true);
+
+#ifdef VOLUMETRIC_CLOUDS_ENABLED
+        float dither = texelFetch(s_CausticsTexture, ivec3(ivec2(gl_FragCoord.xy) % 256, 1), 0).r;
+        applyCumulusClouds(outColor, v_scatterColor, v_absorbColor, worldDir, worldDist, dither, true);
+#endif
+
         applyVolumetricFog(outColor, projPos);
     } else {
+        float wDistNorm = worldDist / FogAndDistanceControl.z;
         float borderFog = saturate((wDistNorm + RenderChunkFogAlpha.x - FogAndDistanceControl.x) * FogAndDistanceControl.y);
         outColor = mix(outColor, pow(FogColor.rgb, vec3_splat(2.2)), borderFog);
     }

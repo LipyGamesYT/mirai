@@ -22,10 +22,28 @@ void main() {
     float sunFade = smoothstep(0.0, 0.1, SunDir.y);
     float moonFade = smoothstep(0.0, 0.1, MoonDir.y);
 
-    v_absorbColor = GetSunTransmittance(SunDir.xyz) * sunFade * PI * M_EXPOSURE_MUL * SUN_MAX_ILLUMINANCE;
-    v_absorbColor += GetMoonTransmittance(MoonDir.xyz) * moonFade * PI * M_EXPOSURE_MUL * MOON_MAX_ILLUMINANCE;
-    v_scatterColor = GetAtmosphere(vec3(0.0, 1.0, 0.0), 1e10, SunDir.xyz, vec3_splat(1.0)) * SUN_MAX_ILLUMINANCE;
-    v_scatterColor += GetAtmosphere(vec3(0.0, 1.0, 0.0), 1e10, MoonDir.xyz, vec3_splat(1.0)) * MOON_MAX_ILLUMINANCE;
+    v_absorbColor = GetSunTransmittance(SunDir.xyz) * sunFade * SUN_MAX_ILLUMINANCE;
+    v_absorbColor += GetMoonTransmittance(MoonDir.xyz) * moonFade * MOON_MAX_ILLUMINANCE;
+
+    AtmosphereParams sunAtmParams;
+    sunAtmParams.rayStart = vec3(0.0, 10.0, 0.0);
+    sunAtmParams.rayDir = vec3(0.0, 1.0, 0.0);
+    sunAtmParams.lightDir = SunDir.xyz;
+    sunAtmParams.rayLength = 1e10;
+    sunAtmParams.aerial = 1.0;
+    sunAtmParams.occlusion = 1.0;
+    sunAtmParams.mieMod = 1.0;
+    v_scatterColor = GetAtmosphere(sunAtmParams) * SUN_MAX_ILLUMINANCE;
+
+    AtmosphereParams moonAtmParams;
+    moonAtmParams.rayStart = vec3(0.0, 10.0, 0.0);
+    moonAtmParams.rayDir = vec3(0.0, 1.0, 0.0);
+    moonAtmParams.lightDir = MoonDir.xyz;
+    moonAtmParams.rayLength = 1e10;
+    moonAtmParams.aerial = 1.0;
+    moonAtmParams.occlusion = 1.0;
+    moonAtmParams.mieMod = 1.0;
+    v_scatterColor += GetAtmosphere(moonAtmParams) * MOON_MAX_ILLUMINANCE;
 
     if (int(DimensionID.r) != 0) {
         v_absorbColor = vec3_splat(0.0);
@@ -78,8 +96,26 @@ void main() {
     vec3 worldDir = normalize(worldPos);
     if (worldDir.y < 0.1 && ClampViewVectors.x > 0.0) worldDir = normalize(vec3(worldDir.x, 0.1, worldDir.z));
 
-    vec3 outColor = GetAtmosphere(worldDir, 1e10, SunDir.xyz, vec3_splat(1.0)) * SUN_MAX_ILLUMINANCE;
-    outColor += GetAtmosphere(worldDir, 1e10, MoonDir.xyz, vec3_splat(1.0)) * MOON_MAX_ILLUMINANCE;
+    AtmosphereParams sunAtmParams;
+    sunAtmParams.rayStart = vec3(0.0, 10.0, 0.0);
+    sunAtmParams.rayDir = worldDir;
+    sunAtmParams.lightDir = SunDir.xyz;
+    sunAtmParams.rayLength = 1e10;
+    sunAtmParams.aerial = 1.0;
+    sunAtmParams.occlusion = 1.0;
+    sunAtmParams.mieMod = 1.0;
+
+    AtmosphereParams moonAtmParams;
+    moonAtmParams.rayStart = vec3(0.0, 10.0, 0.0);
+    moonAtmParams.rayDir = worldDir;
+    moonAtmParams.lightDir = MoonDir.xyz;
+    moonAtmParams.rayLength = 1e10;
+    moonAtmParams.aerial = 1.0;
+    moonAtmParams.occlusion = 1.0;
+    moonAtmParams.mieMod = 1.0;
+
+    vec3 outColor = GetAtmosphere(sunAtmParams) * SUN_MAX_ILLUMINANCE;
+    outColor += GetAtmosphere(moonAtmParams) * MOON_MAX_ILLUMINANCE;
 
     applyCirrusClouds(outColor, worldDir, DirectionalLightSourceWorldSpaceDirection.xyz, v_absorbColor, false);
 

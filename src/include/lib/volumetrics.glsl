@@ -13,9 +13,29 @@ void applyCumulusClouds(inout vec3 outColor, vec3 scatterColor, vec3 absorbColor
     vec4 clouds = calcCloud(worldDir, DirectionalLightSourceWorldSpaceDirection.xyz, worldDist, dither, isTerrain, cloudSetup);
 
     //get atmosphere again, but now with cloud depth and has more aerial intensity
+    AtmosphereParams sunAtmParams;
+    sunAtmParams.rayStart = vec3(0.0, 10.0, 0.0);
+    sunAtmParams.rayDir = worldDir;
+    sunAtmParams.lightDir = SunDir.xyz;
+    sunAtmParams.rayLength = clouds.b;
+    sunAtmParams.aerial = 100.0;
+    sunAtmParams.occlusion = 1.0;
+    sunAtmParams.mieMod = 1.0;
+
+    AtmosphereParams moonAtmParams;
+    moonAtmParams.rayStart = vec3(0.0, 10.0, 0.0);
+    moonAtmParams.rayDir = worldDir;
+    moonAtmParams.lightDir = MoonDir.xyz;
+    moonAtmParams.rayLength = clouds.b;
+    moonAtmParams.aerial = 40.0;
+    moonAtmParams.occlusion = 1.0;
+    moonAtmParams.mieMod = 1.0;
+
     vec4 transmittance;
-    vec3 atmContrib = GetAtmosphere(worldDir, clouds.b, 100.0, SunDir.xyz, vec3_splat(1.0), transmittance) * SUN_MAX_ILLUMINANCE;
-    atmContrib += GetAtmosphere(worldDir, clouds.b, 50.0, MoonDir.xyz, vec3_splat(1.0)) * MOON_MAX_ILLUMINANCE;
+    vec3 atmContrib = GetAtmosphere(sunAtmParams, transmittance) * SUN_MAX_ILLUMINANCE;
+    atmContrib += GetAtmosphere(moonAtmParams) * MOON_MAX_ILLUMINANCE;
+
+    if (MoonDir.y > 0.0) clouds.r *= 0.75;
 
     vec3 cloudsColor = (clouds.g * scatterColor + clouds.r * absorbColor) * transmittance.rgb;
     cloudsColor += atmContrib * (1.0 - clouds.a);
@@ -27,4 +47,5 @@ void applyVolumetricFog(inout vec3 outColor, vec3 projPos) {
     vec4 volumetricFog = sampleVolume(s_ScatteringBuffer, uvw);
     if (VolumeScatteringEnabledAndPointLightVolumetricsEnabled.x > 0.0) outColor = outColor * volumetricFog.a + volumetricFog.rgb;
 }
+
 #endif

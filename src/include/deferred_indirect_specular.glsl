@@ -62,11 +62,12 @@ void main() {
 
     //materials data from gbuffers
     uvec4 data16 = texelFetch(s_EmissiveAmbientLinearRoughness, ivec2(gl_FragCoord.xy), 0) & 0xFFFFu;
+    vec4 blightColor = vec4(data16.g >> 8, data16.g & 0xFFu, data16.b >> 8, data16.b & 0xFFu) / 255.0;
+    float skyLightmap = float(data16.a & 0xFFu) / 255.0;
     float roughness = float(data16.r >> 8) / 255.0;
-    vec2 lightmap = vec2(data16.g >> 8, data16.g & 0xFFu) / 255.0;
     vec4 data = texture2D(s_ColorMetalnessSubsurface, v_texcoord0);
     float metalness = unpackMetalness(data.a);
-    vec3 albedo = pow(data.rgb, vec3_splat(2.2)) * 2.0;
+    vec3 albedo = toLinear(data.rgb) * 2.0;
     vec3 f0 = mix(vec3_splat(0.02), albedo, metalness);
     vec3 normal = octToNdirSnorm(texture2D(s_Normal, v_texcoord0).rg);
 
@@ -75,10 +76,11 @@ void main() {
 
     float exposure = texture2D(s_PreviousFrameAverageLuminance, vec2_splat(0.5)).r;
 
+    vec3 blockAmbient = blightColor.rgb * blightColor.a * 6.0;
     vec3 outColor = vec3_splat(0.0);
 
     if (depth < 1.0) {
-        outColor = indirectSpecular(f0, worldDir, normal, v_texcoord0, roughness, metalness, lightmap, exposure, isNeedSkyReflection);
+        outColor = indirectSpecular(f0, worldDir, normal, blockAmbient, v_texcoord0, roughness, metalness, skyLightmap, exposure, isNeedSkyReflection);
 
         float wDistNorm = length(worldPos) / FogAndDistanceControl.z;
         float borderFog = saturate((wDistNorm + RenderChunkFogAlpha.x - FogAndDistanceControl.x) * FogAndDistanceControl.y);

@@ -15,19 +15,14 @@ uniform highp vec4 JitterOffset;
 uniform highp vec4 MoonDir;
 uniform highp vec4 SunDir;
 uniform highp vec4 TemporalSettings;
-uniform highp vec4 Time;
-uniform highp vec4 WorldOrigin;
 
 SAMPLER2DARRAY_AUTOREG(s_ShadowCascades);
 SAMPLER2DARRAY_AUTOREG(s_PreviousLightingBuffer);
 IMAGE2D_ARRAY_WR_AUTOREG(s_CurrentLightingBuffer, rgba16f);
 
 #include "./lib/common.glsl"
-#include "./lib/atmosphere.glsl"
 #include "./lib/froxel_util.glsl"
-
-#define MATERIAL_POPULATE_VOLUME
-#include "./lib/clouds.glsl"
+#include "./lib/atmosphere.glsl"
 
 float calcFPShadow(vec3 worldPos){
     vec3 projPos = mul(PlayerShadowProj, vec4(worldPos, 1.0)).xyz;
@@ -43,11 +38,9 @@ float calcFPShadow(vec3 worldPos){
 
     float shadowScale = FirstPersonPlayerShadowsEnabledAndResolutionAndFilterWidthAndTextureDimensions.y;
     uvShadow = uvShadow * shadowScale + vec2(0.0, 1.0 - shadowScale);
-
     if (!(uvShadow.x >= 0.0 && uvShadow.x < shadowScale && uvShadow.y >= (1.0 - shadowScale) && uvShadow.y < 1.0)) return 1.0;
 
     float cascade = dot(CascadesPerSet, vec4_splat(1.0)) + 1.0;
-
     return step(occluder, texture2DArrayLod(s_ShadowCascades, vec3(uvShadow, cascade), 0.0).r);
 }
 
@@ -109,61 +102,52 @@ void main() {
     float viewDist = length(viewPos);
 
     float shadowMap = calcMainShadow(worldPos);
-
     float fpShadow = calcFPShadow(worldPos);
     shadowMap = min(shadowMap, fpShadow);
 
-#ifdef VOLUMETRIC_CLOUDS_ENABLED
-    vec3 position = worldPos - WorldOrigin.xyz;
-    CloudSetup cloudSetup = calcCloudSetup(DirectionalLightSourceWorldSpaceDirection.y, position.y);
-    float cloudShadow = calcCloudShadow(position, DirectionalLightSourceWorldSpaceDirection.xyz, 15.0, cloudSetup);
-    shadowMap = min(shadowMap, cloudShadow);
-#endif
-
-    vec3 absorbColor = GetSunTransmittance(SunDir.xyz) * PI * M_EXPOSURE_MUL * SUN_MAX_ILLUMINANCE;
-    absorbColor += GetMoonTransmittance(MoonDir.xyz) * PI * M_EXPOSURE_MUL * MOON_MAX_ILLUMINANCE;
+    vec3 absorbColor = GetSunTransmittance(SunDir.xyz) * SUN_MAX_ILLUMINANCE;
+    absorbColor += GetMoonTransmittance(MoonDir.xyz) * MOON_MAX_ILLUMINANCE;
     //night-sunrise sunset-night transition fade
-    absorbColor *= smoothstep(0.0, 0.2, DirectionalLightSourceWorldSpaceDirection.y);
+    absorbColor *= smoothstep(0.0, 0.1, DirectionalLightSourceWorldSpaceDirection.y);
 
     // air scattering
     // aerial intensity is higher when sunrise
     float aerialModulator = 1.0 + smoothstep(0.5, 0.75, TimeOfDay.r) * smoothstep(0.85, 0.7, TimeOfDay.r) * 10.0;
-    vec4 transmittance;
-    vec3 airScattering = GetAtmosphere(
-        vec3(0.0, 10.0, 0.0),
-        worldDir,
-        viewDist,
-        aerialModulator,
-        SunDir.xyz,
-        vec3_splat(1.0),
-        transmittance,
-        shadowMap
-    ) * SUN_MAX_ILLUMINANCE;
-    airScattering += GetAtmosphere(
-        vec3(0.0, 10.0, 0.0),
-        worldDir,
-        viewDist,
-        aerialModulator,
-        MoonDir.xyz,
-        vec3_splat(1.0),
-        transmittance,
-        shadowMap
-    ) * MOON_MAX_ILLUMINANCE;
+    AtmosphereParams sunAtmParams;
+    sunAtmParams.rayStart = vec3(0.0, 10.0, 0.0);
+    sunAtmParams.rayDir = worldDir;
+    sunAtmParams.lightDir = SunDir.xyz;
+    sunAtmParams.rayLength = viewDist;
+    sunAtmParams.aerial = aerialModulator;
+    sunAtmParams.occlusion = shadowMap;
+    sunAtmParams.mieMod = 1.0;
 
-    float cosTheta = dot(worldDir, DirectionalLightSourceWorldSpaceDirection.xyz);
+    AtmosphereParams moonAtmParams;
+    moonAtmParams.rayStart = vec3(0.0, 10.0, 0.0);
+    moonAtmParams.rayDir = worldDir;
+    moonAtmParams.lightDir = MoonDir.xyz;
+    moonAtmParams.rayLength = viewDist;
+    moonAtmParams.aerial = aerialModulator;
+    moonAtmParams.occlusion = shadowMap;
+    moonAtmParams.mieMod = 1.0;
+
+    vec4 transmittance;
+    vec3 airScattering = GetAtmosphere(sunAtmParams, transmittance) * SUN_MAX_ILLUMINANCE;
+    airScattering += GetAtmosphere(moonAtmParams) * MOON_MAX_ILLUMINANCE;
 
     float altitudeMod = clamp(HeightFogScaleBias.x * worldPos.y + HeightFogScaleBias.y, 0.0, 1.0);
     float tsmLum = saturate(luminance(transmittance.rgb));
     vec4 scatterExt = vec4(airScattering, 1.0 - tsmLum) * altitudeMod;
 
     // water scattering
-    vec3 waterScattering = exp(-WATER_EXTINCTION_COEFFICIENTS * 10.0) * PhaseHG(cosTheta, 0.6) * shadowMap;
+    float cost = dot(worldDir, DirectionalLightSourceWorldSpaceDirection.xyz);
+    vec3 waterScattering = exp(-WATER_EXTINCTION_COEFFICIENTS * 10.0) * PhaseHG(cost, 0.7) * shadowMap;
     if (CameraUnderwaterAndWaterSurfaceBiasAndFalloff.x > 0.0) {
-        scatterExt = vec4(waterScattering * luminance(absorbColor) * 0.05, 0.0);
+        scatterExt = vec4(waterScattering * luminance(absorbColor) * 0.03, 0.0);
     }
 
     // cut scattering if out of render distance
-    scatterExt = (viewDist / FogAndDistanceControl.z) < 1.0 ? scatterExt : vec4_splat(0.0);
+    scatterExt = (viewDist / FogAndDistanceControl.z) < 1.0 ? scatterExt * 2.0 : vec4_splat(0.0);
 
     //temporal accumulation stuff
     vec3 uvwNoJitt = (vec3(xyz) + 0.5) / VolumeDimensions.xyz;
@@ -183,4 +167,5 @@ void main() {
         imageStore(s_CurrentLightingBuffer, xyz, scatterExt);
     }
 }
+
 #endif
