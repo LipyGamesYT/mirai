@@ -100,7 +100,7 @@ vec2 calcMainShadow(vec3 worldPos, float nDotSd) {
     float slopeMask = clamp(nDotSd, NdLFloor[cascade], 1.0);
     float shadowBias = CascadesParameters[cascade].g + CascadesParameters[cascade].b * (sqrt(1.0 - (slopeMask * slopeMask)) / slopeMask);
 
-    float falloffScale = length(invProj[2].xyz) * 2.0;
+    float falloffScale = length(invProj[2].xyz) * 4.0;
 
 #if BGFX_SHADER_LANGUAGE_GLSL
     vec2 uvShadow = projPos.xy * 0.5 + 0.5;
