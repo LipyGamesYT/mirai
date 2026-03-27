@@ -84,7 +84,7 @@ float calcCumulusModel(vec3 pos) {
 
     //worley sculpting for billow shape
     float wsculpting = worley3d(pos * 0.15 + windDir.xxy * 0.05);
-    base = linearstep(wsculpting * heightFraction * 0.8, 1.0, base);
+    base = linearstep(wsculpting * heightFraction, 1.0, base);
     return base;
 }
 
@@ -113,7 +113,7 @@ float calcDirectScattering(vec3 samplePos, vec3 lightDir, float costh) {
         float phase = mix(forward, backward, 0.2);
         lighting += b * phase * exp(-shadow * stepSpace * a);
 
-        a = a * (0.25 + lMod * 0.15);
+        a = a * (0.25 + lMod * 0.2);
         g *= 0.5;
         b *= 0.75;
     }
@@ -144,7 +144,7 @@ vec4 calcCloud(vec3 worldDir, vec3 lightDir, float worldDist, float dither, bool
         if (density > 0.0) {
             //indirect scatter just use layer gradient
             float dscattering = calcDirectScattering(samplePos, lightDir, costh);
-            vec2 lum = vec2(dscattering, heightFraction * 0.2 + 0.2) * density;
+            vec2 lum = vec2(dscattering, heightFraction * 0.1 + 0.1) * density;
 
             float stepTransmittance = exp(-density * CLOUD_VOLUME_STEP_SPACE);
 
