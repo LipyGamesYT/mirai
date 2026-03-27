@@ -93,7 +93,7 @@ void main() {
     vec2 lighting = calculateOcclusionAndLightingUV(v_occlusionUV, v_occlusionHeight);
     albedo.rgb = pow(albedo.rgb, vec3_splat(2.2));
 
-    vec3 outColor = albedo.rgb;
+    vec3 outColor = albedo.rgb * 0.01;
     outColor = preExposeLighting(outColor, texture2D(s_PreviousFrameAverageLuminance, vec2_splat(0.5)).r);
 
     gl_FragColor = vec4(outColor, albedo.a * lighting.g);
