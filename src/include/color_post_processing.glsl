@@ -27,68 +27,92 @@ SAMPLER2D_HIGHP_AUTOREG(s_RasterizedColor);
 
 #include "./lib/common.glsl"
 
-//https://github.com/bWFuanVzYWth/AgX/
-vec3 agx_curve3(vec3 v) {
-    CONST(float) threshold = 0.6060606060606061;
-    CONST(float) a_up = 69.86278913545539;
-    CONST(float) a_down = 59.507875;
-    CONST(float) b_up = 13.0 / 4.0;
-    CONST(float) b_down = 3.0 / 1.0;
-    CONST(float) c_up = -4.0 / 13.0;
-    CONST(float) c_down = -1.0 / 3.0;
+// Minimal AgX approximation
+// https://iolite-engine.com/blog_posts/minimal_agx_implementation
 
-    vec3 mask = step(v, vec3_splat(threshold));
-    vec3 a = a_up + (a_down - a_up) * mask;
-    vec3 b = b_up + (b_down - b_up) * mask;
-    vec3 c = c_up + (c_down - c_up) * mask;
-    return 0.5 + (((-2.0 * threshold)) + 2.0 * v) * pow(1.0 + a * pow(abs(v - threshold), b), c);
+// Mean error^2: 1.85907662e-06
+vec3 agxDefaultContrastApprox(vec3 x) {
+    vec3 x2 = x * x;
+    vec3 x4 = x2 * x2;
+    vec3 x6 = x4 * x2;
+
+    return - 17.86  * x6 * x
+           + 78.01  * x6
+           - 126.7  * x4 * x
+           + 92.06  * x4
+           - 28.72  * x2 * x
+           + 4.361  * x2
+           - 0.1718 * x
+           + 0.002857;
 }
 
-vec3 agx_tonemapping(vec3 ci) {
-    CONST(float) min_ev = -12.473931188332413;
-    CONST(float) max_ev = 4.026068811667588;
-    CONST(float) dynamic_range = max_ev - min_ev;
-
+vec3 agx(vec3 val) {
     mat3 agx_mat = mtxFromCols(
-        vec3(0.8424010709504686, 0.04240107095046854, 0.04240107095046854),
-        vec3(0.07843650156180276, 0.8784365015618028, 0.07843650156180276),
-        vec3(0.0791624274877287, 0.0791624274877287, 0.8791624274877287)
+        vec3(0.842479062253094, 0.0423282422610123, 0.0423756549057051),
+        vec3(0.0784335999999992,  0.878468636469772,  0.0784336),
+        vec3(0.0792237451477643, 0.0791661274605434, 0.879142973793104)
     );
 
-    mat3 agx_mat_inv = mtxFromCols(
-        vec3(1.1969986613119143, -0.053001338688085674, -0.053001338688085674),
-        vec3(-0.09804562695225345, 1.1519543730477466, -0.09804562695225345),
-        vec3(-0.09895303435966087, -0.09895303435966087, 1.151046965640339)
-    );
+    CONST(float) min_ev = -12.47393f;
+    CONST(float) max_ev = 4.026069f;
 
     // Input transform (inset)
-    ci = mul(agx_mat, ci);
+    val = mul(agx_mat, val);
 
-    // Apply sigmoid function
-    vec3 ct = saturate(log2(ci) * (1.0 / dynamic_range) - (min_ev / dynamic_range));
-    vec3 co = agx_curve3(ct);
+    // Log2 space encoding
+    val = clamp(log2(val), min_ev, max_ev);
+    val = (val - min_ev) / (max_ev - min_ev);
+
+    // Apply sigmoid function approximation
+    val = agxDefaultContrastApprox(val);
+    return val;
+}
+
+vec3 agxEotf(vec3 val) {
+    mat3 agx_mat_inv = mtxFromCols(
+        vec3(1.19687900512017, -0.0528968517574562, -0.0529716355144438),
+        vec3(-0.0980208811401368, 1.15190312990417, -0.0980434501171241),
+        vec3(-0.0990297440797205, -0.0989611768448433, 1.15107367264116)
+    );
 
     // Inverse input transform (outset)
-    co = mul(agx_mat_inv, co);
+    val = mul(agx_mat_inv, val);
 
-    return co;
+    // sRGB IEC 61966-2-1 2.2 Exponent Reference EOTF Display
+    // NOTE: We're linearizing the output here. Comment/adjust when
+    // *not* using a sRGB render target
+    // val = pow(val, vec3(2.2));
+    return val;
+}
+
+vec3 agxLook(vec3 val) {
+    vec3 offset = vec3_splat(0.0);
+    vec3 slope = vec3_splat(1.0);
+    vec3 power = vec3_splat(1.3);
+    float sat = 1.05;
+
+    // ASC CDL
+    val = pow(val * slope + offset, power);
+    float luma = dot(val, vec3(0.2126, 0.7152, 0.0722));
+    return luma + sat * (val - luma);
 }
 
 void main() {
     vec3 inputColor = texture2D(s_ColorTexture, v_texcoord0).rgb;
     inputColor = max(inputColor, vec3_splat(0.0));
 
-
-    // deobfuscated from vanilla material, for now just leave it like this
+    // deobfuscated from vanilla material
     if (TonemapParams0.b > 0.0) {
         float preExposureLum = texture2D(s_PreExposureLuminance, vec2_splat(0.5)).r;
         inputColor = inputColor / vec3_splat((MIDDLE_GRAY / preExposureLum) + EPSILON);
     }
+
     float refLuminance = MIDDLE_GRAY;
     if (ExposureCompensation.b > 0.5) {
         float avgLum = texture2D(s_AverageLuminance, vec2_splat(0.5)).r;
         refLuminance = clamp(avgLum, LuminanceMinMaxAndWhitePointAndMinWhitePoint.r, LuminanceMinMaxAndWhitePointAndMinWhitePoint.g);
     }
+
     int exposureMode = int(ExposureCompensation.r);
     float exposureValue = ExposureCompensation.g; //manual
     if (exposureMode > 0 && exposureMode < 2) {
@@ -101,14 +125,17 @@ void main() {
         float t = (lumMin == lumMax) ? 0.5 : ((log2(refLuminance) + 3.0) - (log2(lumMin) + 3.0)) / ((log2(lumMax) + 3.0) - (log2(lumMin) + 3.0));
         exposureValue = texture2D(s_CustomExposureCompensation, vec2(t, 0.5)).r;
     }
-
-
     float exposure = (MIDDLE_GRAY / refLuminance) * exposureValue;
-    vec3 outColor = agx_tonemapping(inputColor * exposure);
 
+    vec3 outColor = inputColor * exposure;
     vec4 rasterColor = texture2D(s_RasterizedColor, v_texcoord0);
-    rasterColor.rgb = agx_tonemapping(rasterColor.rgb);
     outColor = mix(outColor, rasterColor.rgb, rasterColor.a);
+
+    outColor *= 2.0; //extra exposure
+
+    outColor = agx(outColor);
+    outColor = agxLook(outColor);
+    outColor = agxEotf(outColor);
 
     outColor = saturate(outColor);
 
