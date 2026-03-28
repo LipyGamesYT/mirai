@@ -146,8 +146,9 @@ vec4 calcCloud(vec3 worldDir, vec3 lightDir, float worldDist, float dither, bool
         float density = calcCumulusModel(samplePos);
         if (density > 0.0) {
             //indirect scatter just use layer gradient
+            float iscattering = heightFraction * 0.1 + 0.1;
             float dscattering = calcDirectScattering(samplePos, lightDir, costh);
-            vec2 lum = vec2(dscattering, heightFraction * 0.1 + 0.1) * density;
+            vec2 lum = vec2(dscattering, iscattering) * density;
 
             float stepTransmittance = exp(-density * CLOUD_VOLUME_STEP_SPACE);
 
@@ -159,6 +160,8 @@ vec4 calcCloud(vec3 worldDir, vec3 lightDir, float worldDist, float dither, bool
             tweight += transmittance;
             transmittance *= stepTransmittance;
         }
+
+        if (transmittance < EPSILON) break;
 
         setup.tMin += CLOUD_VOLUME_STEP_SPACE;
         if (setup.tMin > setup.tMax) break;
@@ -183,6 +186,7 @@ float calcCloudTransmittanceOnly(vec3 worldDir, float worldDist, float dither, b
         vec3 samplePos = rayOrigin + rayDir * (setup.tMin + dither * CLOUD_VOLUME_STEP_SPACE);
         float density = calcCumulusModel(samplePos);
         if (density > 0.0) transmittance *= exp(-density * CLOUD_VOLUME_STEP_SPACE);
+        if (transmittance < EPSILON) break;
 
         setup.tMin += CLOUD_VOLUME_STEP_SPACE;
         if (setup.tMin > setup.tMax) break;
