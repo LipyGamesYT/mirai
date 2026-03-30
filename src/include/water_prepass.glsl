@@ -21,8 +21,10 @@ void main() {
     v_tangent = mul(u_model[0], vec4(a_tangent.xyz, 0.0)).xyz;
     v_bitangent = mul(u_model[0], vec4(cross(a_normal.xyz, a_tangent.xyz) * a_tangent.w, 0.0)).xyz;
     v_worldPos = worldPos;
+    vec4 clipPos = mul(u_viewProj, vec4(worldPos, 1.0));
+    v_clipPos = clipPos;
 
-    gl_Position = mul(u_viewProj, vec4(worldPos, 1.0));
+    gl_Position = clipPos;
 }
 
 #endif //BGFX_SHADER_TYPE_VERTEX
@@ -39,8 +41,11 @@ void main() {
     gl_FragColor = vec4_splat(1.0);
 }
 #elif DEPTH_AND_NORMAL_PASS
+#include "./lib/froxel_util.glsl"
 void main() {
-    gl_FragData[0] = vec4_splat(0.0);
+    vec3 projPos = v_clipPos.xyz / v_clipPos.w;
+    vec3 uvw = ndcToVolume(projPos);
+    gl_FragData[0] = vec4(uvw.z, abs(dot(v_normal, normalize(-v_worldPos))), 0.0, 1.0);
 }
 #else
 

@@ -13,6 +13,7 @@ $input i_data3
 $output v_tangent
 $output v_bitangent
 $output v_normal
+$output v_clipPos
 $output v_worldPos
 $output v_lightColor
 $output v_lightmapUV
