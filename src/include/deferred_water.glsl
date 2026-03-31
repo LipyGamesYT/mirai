@@ -122,7 +122,7 @@ void main() {
     if (int(DimensionID.r) == 0) {
         if (CameraIsUnderwater.r > 0.0) {
             outColor = exp(-WATER_EXTINCTION_COEFFICIENTS * 10.0) * luminance(v_absorbColor) * 0.01 * CameraLightIntensity.y;
-            gl_FragColor.a = smoothstep(1.0, 0.0, dot(normal, refract(worldDir, -normal, 1.0)));
+            gl_FragColor.a = smoothstep(1.0, 0.0, dot(normal, refract(worldDir, -normal, 1.333)) * exp(-length(worldPos) * 0.15));
         }
 
 #ifdef VOLUMETRIC_CLOUDS_ENABLED
