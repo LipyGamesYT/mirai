@@ -16,7 +16,7 @@ float linearToLogDepth(float linearDepth) {
 vec3 ndcToVolume(vec3 ndc) {
     vec2 uv = ndc.xy * 0.5 + 0.5;
     vec4 view = mul(u_invProj, vec4(ndc, 1.0));
-    float viewDepth = -view.z / view.w;
+    float viewDepth = (-view.z) / view.w;
     float wLinear = (viewDepth - VolumeNearFar.x) / (VolumeNearFar.y - VolumeNearFar.x);
     return vec3(uv, linearToLogDepth(wLinear));
 }
