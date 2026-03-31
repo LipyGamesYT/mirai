@@ -79,7 +79,7 @@ float projToLinearDepth(float z) {
 }
 
 float calcFadingValue(float roughness, float rayPercentage) {
-    float fadeValueRayPercentage = 1.0 - smoothstep(0.9, 1.0, rayPercentage);
+    float fadeValueRayPercentage = 1.0 - smoothstep(0.85, 1.0, rayPercentage);
     float roughnessFadeDuration = SSRRoughnessCutoffParams.x - SSRRoughnessCutoffParams.y;
     float roughnessLerpAlpha = (max(roughness, SSRRoughnessCutoffParams.y) - SSRRoughnessCutoffParams.y) / roughnessFadeDuration;
     float fadeValueRoughness = mix(1.0, 0.0, roughnessLerpAlpha);
