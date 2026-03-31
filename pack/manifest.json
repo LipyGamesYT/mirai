@@ -3,7 +3,7 @@
   "header": {
     "name": "Mirai",
     "description": "Make Minecraft visual looks realistic\nBy: bambosan",
-    "uuid": "f2659368-5abe-4208-b56e-2bdcfc6a842c",
+    "uuid": "a214c2a8-3a57-4030-86f7-cf0f786e7662",
     "version": [2, 1, 1],
     "min_engine_version": [1, 26, 10]
   },
@@ -11,7 +11,7 @@
     {
       "description": "Make Minecraft visual looks realistic\nBy: bambosan",
       "type": "resources",
-      "uuid": "6c749143-d1c7-4c53-aa19-892b41fb16a0",
+      "uuid": "c0e2a54c-99a5-4e2f-a9a4-810c2dbd442f",
       "version": [2, 1, 1]
     }
   ],
