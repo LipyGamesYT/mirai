@@ -88,7 +88,7 @@ vec3 agxEotf(vec3 val) {
 vec3 agxLook(vec3 val) {
     vec3 offset = vec3_splat(0.0);
     vec3 slope = vec3_splat(1.0);
-    vec3 power = vec3_splat(1.3);
+    vec3 power = vec3_splat(1.35);
     float sat = 1.0;
 
     // ASC CDL
