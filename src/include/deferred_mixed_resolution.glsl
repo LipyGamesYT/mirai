@@ -256,7 +256,7 @@ void main() {
 
 #ifdef VOLUMETRIC_CLOUDS_ENABLED
         float dither = texelFetch(s_CausticsTexture, ivec3(ivec2(gl_FragCoord.xy) % 256, 1), 0).r;
-        applyCumulusClouds(outColor, v_scatterColor, v_absorbColor, worldDir, worldDist, dither, isTerrain);
+        applyCumulusClouds(outColor, v_absorbColor, worldDir, worldDist, dither, isTerrain);
 #endif
 
         //underwater extinction and scattering

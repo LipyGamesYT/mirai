@@ -37,16 +37,18 @@ CloudSetup calcCloudSetup(float direction, float camAltitude) {
 
     if (camAltitude > cloudMaxY) {
         //camera is above the clouds
-        if (direction >= 0.0) { setup.isValidCloud = false; return setup; }
-
-        //start marching at the top plane, stop at the bottom plane
+        if (direction > 0.0) {
+            setup.isValidCloud = false;
+            return setup;
+        }
         setup.tMin = tTopPlane;
         setup.tMax = tBottomPlane;
     } else if (camAltitude < CLOUD_HEIGHT) {
         //camera is below the clouds
-        if (direction <= 0.0) { setup.isValidCloud = false; return setup; }
-
-        //start marching at the bottom plane, stop at the top plane
+        if (direction < 0.0) {
+            setup.isValidCloud = false;
+            return setup;
+        }
         setup.tMin = tBottomPlane;
         setup.tMax = tTopPlane;
     } else {
@@ -74,13 +76,8 @@ float calcCumulusModel(vec3 pos) {
 
     float heightFraction = saturate((pos.y - CLOUD_HEIGHT) / CLOUD_THICKNESS);
 
-    //top sculpting
-    float topFade = pow(heightFraction, 6.0);
-    base = linearstep(topFade, 1.0, base);
-
-    //bottom sculpting
-    float bottomFade = exp(-heightFraction * 20.0);
-    base = linearstep(bottomFade, 1.0, base);
+    base = linearstep(pow8(heightFraction), 1.0, base); //top sculpting
+    base = linearstep(exp(-heightFraction * 25.0), 1.0, base); //bottom sculpting
 
     //worley sculpting for billow shape
     float wsculpting = worley3d(pos * 0.15 + windDir.xxy * 0.05);
@@ -88,7 +85,7 @@ float calcCumulusModel(vec3 pos) {
     return base;
 }
 
-float calcDirectScattering(vec3 samplePos, vec3 lightDir, float costh) {
+float calcDirectScattering(vec3 samplePos, vec3 lightDir, float extinction, float costh) {
     //fixed params self shadow
     float shadow = 0.0;
     float stepSpace = CLOUD_THICKNESS / max(lightDir.y, 0.01) * 0.25;
@@ -100,38 +97,39 @@ float calcDirectScattering(vec3 samplePos, vec3 lightDir, float costh) {
         shadow += calcCumulusModel(samplePos);
     }
 
-    float powder = 1.0 - exp(-shadow * 2.0);
     float lighting = 0.0;
-
     float lMod = saturate(lightDir.y);
     float g = 1.0; //anisotropy factor
-    float b = 0.75 + lMod * 0.5; //brightness
+    float b = 1.0 + lMod * 0.5; //brightness
     float a = 1.0; //shadow
 
     UNROLL
     for (int j = 0; j < 4; j++) {
-        float forward = PhaseHG(costh, 0.7 * g);
-        float backward = PhaseHG(costh, -0.1 * g);
-        float phase = mix(forward, backward, 0.2);
-        lighting += b * phase * exp(-shadow * stepSpace * a);
+        float fphase = PhaseHG(costh, 0.7 * g);
+        float bphase = PhaseHG(costh, -0.1 * g);
+        float dphase = mix(fphase, bphase, 0.4);
 
-        a = a * (0.25 + lMod * 0.2);
+        lighting += b * dphase * exp(-shadow * stepSpace * a);
+        a = a * (0.25 + lMod * 0.15);
         g *= 0.5;
         b *= 0.75;
     }
 
-    return powder * lighting + lighting;
+    float powder = pow5(1.0 - exp(-extinction * CLOUD_VOLUME_STEP_SPACE * 3.0));
+    lighting *= mix(powder * 5.0, 1.0, costh * 0.5 + 0.5);
+
+    return lighting;
 }
 
-vec4 calcCloud(vec3 worldDir, vec3 lightDir, float worldDist, float dither, bool isTerrain, CloudSetup setup) {
-    if (!setup.isValidCloud) return vec4(0.0, 0.0, 0.0, 1.0);
+vec3 calcCloud(vec3 worldDir, vec3 lightDir, float worldDist, float dither, bool isTerrain, CloudSetup setup) {
+    if (!setup.isValidCloud) return vec3(0.0, 0.0, 1.0);
 
     vec3 rayOrigin = -WorldOrigin.xyz;
     vec3 rayDir = worldDir;
 
     float costh = dot(worldDir, lightDir);
 
-    vec2 lighting = vec2_splat(0.0);
+    float lighting = 0.0;
     float wdepth = 0.0; //weighted depth, used for atmosphere contribution
     float tweight = 0.0;
     float transmittance = 1.0;
@@ -141,21 +139,16 @@ vec4 calcCloud(vec3 worldDir, vec3 lightDir, float worldDist, float dither, bool
     LOOP
     for (int i = 0; i < setup.stepCounts; i++) {
         vec3 samplePos = rayOrigin + rayDir * (setup.tMin + dither * CLOUD_VOLUME_STEP_SPACE);
-        float heightFraction = saturate((samplePos.y - CLOUD_HEIGHT) / CLOUD_THICKNESS);
+        float extinction = calcCumulusModel(samplePos);
 
-        float density = calcCumulusModel(samplePos);
-        if (density > 0.0) {
-            //indirect scatter just use layer gradient
-            float iscattering = heightFraction * 0.1 + 0.1;
-            float dscattering = calcDirectScattering(samplePos, lightDir, costh);
-            vec2 lum = vec2(dscattering, iscattering) * density;
-
-            float stepTransmittance = exp(-density * CLOUD_VOLUME_STEP_SPACE);
+        if (extinction > 0.0) {
+            float dscattering = calcDirectScattering(samplePos, lightDir, extinction, costh) * extinction;
+            float stepTransmittance = exp(-extinction * CLOUD_VOLUME_STEP_SPACE);
 
             //https://www.shadertoy.com/view/XlBSRz
-            vec2 scatterInt = (lum - lum * stepTransmittance) / max(density, EPSILON);
-            lighting += transmittance * scatterInt;
+            float scatterInt = (dscattering - dscattering * stepTransmittance) / max(extinction, EPSILON);
 
+            lighting += transmittance * scatterInt;
             wdepth += transmittance * setup.tMin;
             tweight += transmittance;
             transmittance *= stepTransmittance;
@@ -168,7 +161,7 @@ vec4 calcCloud(vec3 worldDir, vec3 lightDir, float worldDist, float dither, bool
     }
 
     wdepth /= tweight;
-    return vec4(lighting, wdepth, transmittance);
+    return vec3(lighting, wdepth, transmittance);
 }
 
 float calcCloudTransmittanceOnly(vec3 worldDir, float worldDist, float dither, bool isTerrain, CloudSetup setup) {
@@ -184,8 +177,8 @@ float calcCloudTransmittanceOnly(vec3 worldDir, float worldDist, float dither, b
     LOOP
     for (int i = 0; i < setup.stepCounts; i++) {
         vec3 samplePos = rayOrigin + rayDir * (setup.tMin + dither * CLOUD_VOLUME_STEP_SPACE);
-        float density = calcCumulusModel(samplePos);
-        if (density > 0.0) transmittance *= exp(-density * CLOUD_VOLUME_STEP_SPACE);
+        float extinction = calcCumulusModel(samplePos);
+        if (extinction > 0.0) transmittance *= exp(-extinction * CLOUD_VOLUME_STEP_SPACE);
         if (transmittance < EPSILON) break;
 
         setup.tMin += CLOUD_VOLUME_STEP_SPACE;
@@ -198,19 +191,20 @@ float calcCloudTransmittanceOnly(vec3 worldDir, float worldDist, float dither, b
 float calcCloudShadow(vec3 position, vec3 lightDir, float hardness, CloudSetup setup) {
     if (!setup.isValidCloud) return 1.0;
 
-    float shadowDensity = 0.0;
+    float transmittance = 1.0;
 
     LOOP
     for (int i = 0; i < setup.stepCounts; i++) {
         vec3 samplePos = position + setup.tMin * lightDir;
-        float density = calcCumulusModel(samplePos);
-        if (density > 0.0) shadowDensity += density * CLOUD_VOLUME_STEP_SPACE;
+        float extinction = calcCumulusModel(samplePos);
+        if (extinction > 0.0) transmittance *= exp(-extinction * CLOUD_VOLUME_STEP_SPACE * hardness);
+        if (transmittance < EPSILON) break;
 
         setup.tMin += CLOUD_VOLUME_STEP_SPACE;
         if (setup.tMin > setup.tMax) break;
     }
 
-    return exp(-shadowDensity * hardness);
+    return transmittance;
 }
 
 // just weird shape cirrus but i like it
@@ -248,9 +242,9 @@ void applyCirrusClouds(inout vec3 outColor, vec3 worldDir, vec3 lightDir, vec3 a
     float transmittance = exp(-base * 0.07);
 
     float costh = dot(worldDir, lightDir);
-    float phase = PhaseHG(costh, 0.8);
+    float phase = PhaseHG(costh, 0.7);
 
-    outColor = outColor * transmittance + absorbColor * (1.0 + phase) * (1.0 - transmittance);
+    outColor = outColor * transmittance + absorbColor * (0.75 + phase) * (1.0 - transmittance);
 }
 
 #endif

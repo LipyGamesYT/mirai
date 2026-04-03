@@ -1,4 +1,3 @@
-// shared includes (vertex and fragment shaders)
 #include "./lib/common.glsl"
 #include "./lib/actor_util.glsl"
 #include "./lib/taau_util.glsl"
