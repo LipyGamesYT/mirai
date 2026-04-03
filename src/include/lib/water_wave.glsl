@@ -65,10 +65,10 @@ float getWaves2(vec2 pos, float time) {
 // central difference water normal
 vec3 getWaterNormal(vec2 pos, float time) {
 
-    float hL = getWaves(pos - vec2(0.07, 0.0), time);
-    float hR = getWaves(pos + vec2(0.07, 0.0), time);
-    float hD = getWaves(pos - vec2(0.0, 0.07), time);
-    float hU = getWaves(pos + vec2(0.0, 0.07), time);
+    float hL = getWaves(pos - vec2(0.05, 0.0), time);
+    float hR = getWaves(pos + vec2(0.05, 0.0), time);
+    float hD = getWaves(pos - vec2(0.0, 0.05), time);
+    float hU = getWaves(pos + vec2(0.0, 0.05), time);
 
     return normalize(vec3(hL - hR, hD - hU, 1.0));
 }
