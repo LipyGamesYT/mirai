@@ -10,6 +10,7 @@
 #define CLOUD_THICKNESS 200.0
 #define CLOUD_VOLUME_MAX_STEP_COUNTS 200
 #define CLOUD_VOLUME_STEP_SPACE 10.0
+#define CIRRUS_HEIGHT (CLOUD_HEIGHT + CLOUD_THICKNESS + 200.0)
 
 //terrain
 #define CLOUD_SHADOW_CONTRIBUTION 0.8
@@ -115,8 +116,8 @@ float calcDirectScattering(vec3 samplePos, vec3 lightDir, float extinction, floa
         b *= 0.75;
     }
 
-    float powder = pow5(1.0 - exp(-extinction * CLOUD_VOLUME_STEP_SPACE * 3.0));
-    lighting *= mix(powder * 5.0, 1.0, costh * 0.5 + 0.5);
+    float powder = 1.0 - exp(-extinction * CLOUD_VOLUME_STEP_SPACE * 3.0);
+    lighting *= mix(pow5(powder) * 5.0, 1.0, costh * 0.5 + 0.5);
 
     return lighting;
 }
@@ -213,38 +214,43 @@ float calcCirrusModel(vec2 pos) {
     float amplitude = 1.0;
 
     pos.y *= 0.3;
+    pos.y += Time.x * 0.001;
     pos.x += sin(pos.y * 3.0) * 0.2;
-    pos.y += Time.x * 0.005;
 
     UNROLL
     for (int i = 0; i < 4; i++) {
         float dens = valueNoise(pos) * amplitude;
         tdensity += dens;
         pos *= 3.0;
-        pos.y += dens * 5.0 + Time.x * 0.01;
+        pos.y += dens * pos.y * 0.2 + Time.x * 0.005;
         amplitude *= 0.5;
     }
 
-    return saturate(tdensity * 0.533333 - 0.25);
+    return saturate(tdensity * 0.533333 - 0.2);
 }
 
 void applyCirrusClouds(inout vec3 outColor, vec3 worldDir, vec3 lightDir, vec3 absorbColor, bool isTerrain) {
-    vec2 cloudpos = worldDir.xz / worldDir.y * 2.5;
-    float base = isTerrain ? 0.0 : calcCirrusModel(cloudpos);
+    float camAltitude = -WorldOrigin.y;
+    float dirY = worldDir.y;
+    float tPlane = (CIRRUS_HEIGHT - camAltitude) / dirY;
+    if (tPlane < 0.0 || (dirY < 0.0 && camAltitude < CIRRUS_HEIGHT) || (dirY > 0.0 && camAltitude > CIRRUS_HEIGHT)) {
+        return;
+    }
+
+    vec3 rayOrigin = -WorldOrigin.xyz;
+    vec3 samplePos  = rayOrigin + worldDir * tPlane;
+    float extinction = isTerrain ? 0.0 : calcCirrusModel(samplePos.xz * 0.003);
 
     //distance fade
-    base *= smoothstep(0.0, 0.4, worldDir.y);
+    extinction *= smoothstep(0.0, 0.4, dirY);
 
     //height fade, make the clouds dissapear when camera near them
-    float cirrusHeight = CLOUD_HEIGHT + CLOUD_THICKNESS + 200.0;
-    base *= smoothstep(0.0, 180.0, cirrusHeight + WorldOrigin.y);
+    extinction *= smoothstep(0.0, 180.0, CIRRUS_HEIGHT - camAltitude);
 
-    float transmittance = exp(-base * 0.07);
-
+    float transmittance = exp(-extinction);
     float costh = dot(worldDir, lightDir);
-    float phase = PhaseHG(costh, 0.7);
-
-    outColor = outColor * transmittance + absorbColor * (0.75 + phase) * (1.0 - transmittance);
+    float phase  = PhaseR(costh);
+    outColor = outColor * transmittance + absorbColor * phase * (1.0 - transmittance);
 }
 
 #endif
