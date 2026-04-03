@@ -65,7 +65,7 @@ void main() {
     vec2 waterPos = v_worldPos.xz - WorldOrigin.xz;
     vec3 waterNormal = getWaterNormal(waterPos, Time.x);
     waterNormal = mul(tbn, waterNormal);
-    waterNormal = mix(normal, waterNormal, saturate(exp(-length(v_worldPos.xz) * 0.05)));
+    waterNormal = mix(normal, waterNormal, saturate(exp(-length(v_worldPos.xz) * 0.01)));
 
     vec3 lightColor = v_lightColor;
     if ((lightColor.r + lightColor.g + lightColor.b) <= 0.0 && v_lightmapUV.x > 0.0) {
