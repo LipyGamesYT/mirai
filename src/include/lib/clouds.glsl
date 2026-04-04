@@ -116,6 +116,7 @@ float calcDirectScattering(vec3 samplePos, vec3 lightDir, float extinction, floa
         b *= 0.75;
     }
 
+    //volume extinction is used for powder offect
     float powder = 1.0 - exp(-extinction * CLOUD_VOLUME_STEP_SPACE * 3.0);
     lighting *= mix(pow5(powder) * 5.0, 1.0, costh * 0.5 + 0.5);
 
@@ -233,16 +234,12 @@ void applyCirrusClouds(inout vec3 outColor, vec3 worldDir, vec3 lightDir, vec3 a
     float camAltitude = -WorldOrigin.y;
     float dirY = worldDir.y;
     float tPlane = (CIRRUS_HEIGHT - camAltitude) / dirY;
-    if (tPlane < 0.0 || (dirY < 0.0 && camAltitude < CIRRUS_HEIGHT) || (dirY > 0.0 && camAltitude > CIRRUS_HEIGHT)) {
-        return;
-    }
+    if (tPlane < 0.0 || (dirY < 0.0 && camAltitude < CIRRUS_HEIGHT) || (dirY > 0.0 && camAltitude > CIRRUS_HEIGHT)) return;
 
     vec3 rayOrigin = -WorldOrigin.xyz;
     vec3 samplePos  = rayOrigin + worldDir * tPlane;
-    float extinction = isTerrain ? 0.0 : calcCirrusModel(samplePos.xz * 0.003);
-
-    //distance fade
-    extinction *= smoothstep(0.0, 0.4, dirY);
+    float extinction = isTerrain ? 0.0 : calcCirrusModel(samplePos.xz * 0.005);
+    extinction *= smoothstep(0.0, 0.4, dirY); //distance fade
 
     //height fade, make the clouds dissapear when camera near them
     extinction *= smoothstep(0.0, 180.0, CIRRUS_HEIGHT - camAltitude);
